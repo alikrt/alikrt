@@ -1,0 +1,952 @@
+#include<opencv2/opencv.hpp>
+#include <wiringPi.h>
+#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
+#include <iostream>
+
+using namespace cv;
+using namespace std;
+
+
+
+
+
+Mat resimis ;
+
+//Mat resimis = imread("/home/pi/Desktop/proje2/a1.png");
+//Mat resimis = imread("/home/pi/Desktop/proje2/a4.png");
+//Mat resimis = imread("/home/pi/Desktop/proje2/a7.png");
+//Mat resimis = imread("/home/pi/Desktop/proje2/a6.png");
+//Mat resimis = imread("/home/pi/Desktop/proje2/a5.png");
+//Mat resimis = imread("/home/pi/Desktop/proje2/a2.png");
+//Mat resimis = imread("/home/pi/Desktop/proje2/a3.png");
+
+//Mat src;
+
+
+int stopParam=17;
+int penSay=0;
+int flagNew = 0;
+int ratio = 3;
+int lowThreshold = 100;
+int kernel_size = 3;
+int treshHoldEdge = 0.1;
+int parca_sayisi = 20;
+double OrtaNoktaY2;
+double OrtaNoktaX2;
+int OrtaNoktaX;
+int OrtaNoktaY;
+int ddepth = CV_16S;
+int scale = 1;
+int delta = 0;
+int yon=0;
+int method=1;
+int histler[40][6][257] = {0};
+int cropImg[250][250] = {0};
+
+//------------------------
+int xl1,yl1,xl2,yl2,xr1,yr1,xr2,yr2;
+
+
+void stopCar(void);
+void driveCar(void);
+void cizgiBul(void);
+int edgeBul(Mat resimge);
+void histBul(Mat res, int sira);
+void ortaNokta(int xl1, int yl1, int xl2, int yl2, int xr1, int yr1, int xr2, int yr2);
+int windowEdge(Mat Buyukimge, int merkezX, int merkezY, int ofset);
+int edgeSum(Mat edges);
+void picDrawLine(Mat resim, int treshold);
+
+
+
+
+void stopCar(void){
+	
+	  // delay (500) ;
+	 //  digitalWrite (0, LOW) ; 
+	
+	   cout<<"------------------------------"<<endl;
+	   cout<<"------------------------------"<<endl;
+	   cout<<"-------------STOP-------------"<<endl;
+	   cout<<"------------------------------"<<endl;
+	   cout<<"------------------------------"<<endl;
+	
+	}
+
+void driveCar(void){
+	
+	//  delay (500) ;
+	//  digitalWrite (0, HIGH) ; 	
+	
+	
+	   cout<<"------------------------------"<<endl;
+	   cout<<"------------------------------"<<endl;
+	   cout<<"------------DRIVE-------------"<<endl;
+	   cout<<"------------------------------"<<endl;
+	   cout<<"------------------------------"<<endl;
+	}
+
+
+
+void cizgiBul(Mat src)
+{
+//	cout<<"cizgiBul giris"<<endl;
+	blur(src,src,Size(3,3));
+	Mat dst, cdst;
+	Canny(src, dst, 40, 300, 3);
+	cvtColor(dst, cdst, CV_GRAY2BGR);
+	
+	int satir = src.rows;
+	int sutun = src.cols;
+	
+	cout<<"Resim Satir: "<<satir<<endl;
+	cout<<"Resim Sutun: "<<sutun<<endl;
+	cout<<"---------------"<<endl;
+	int ortaNokta =round(sutun/2);
+
+	int sira1 = 0;
+	int sira2 = 0;
+
+	Point ptr1,ptr2;
+	Point ptr12, ptr22;
+
+	//line(cdst, Point(ortaNokta,1), Point(ortaNokta,satir), Scalar(255, 0, 0), 1, CV_AA);
+
+	
+	
+	double maxV=100000;
+	vector<Vec4i> lines;
+	HoughLinesP(dst, lines, 1, CV_PI / 180, 50, 30, 20);
+	
+	for (size_t i = 0; i < lines.size(); i++)
+	{
+		Vec4i l = lines[i];
+		
+		double sonuc1=sqrt((l[0]-ortaNokta)*(l[0]-ortaNokta)+(l[1]-satir)*(l[1]-satir));	
+		double sonuc2=sqrt((l[2]-ortaNokta)*(l[2]-ortaNokta)+(l[3]-satir)*(l[3]-satir));	
+		
+		double egim=abs(l[1]-l[3]);
+
+		if(sonuc1<maxV && egim>10){
+			maxV=sonuc1;
+			sira1=i;
+		}
+		else if(sonuc2 < maxV && egim>10)
+		{
+			maxV=sonuc2;
+			sira1=i;
+		}
+
+	}
+//	cout<<"sorun yok 1"<<endl;
+	Vec4i t = lines[sira1];
+	double eg1=double(t[0]-t[2])/double(t[1]-t[3]);
+	
+//	cout<<"sorun yok 2"<<endl;
+	
+	int ustKoseL=0;
+	int altKoseL=0;
+	int ustKoseT=0;
+	int altKoseT=0;
+	
+	maxV=100000;
+	for (size_t i = 0; i < lines.size(); i++)
+	{
+		Vec4i l = lines[i];
+		
+		double sonuc1=sqrt((l[0]-ortaNokta)*(l[0]-ortaNokta)+(l[1]-satir)*(l[1]-satir));	
+		double sonuc2=sqrt((l[2]-ortaNokta)*(l[2]-ortaNokta)+(l[3]-satir)*(l[3]-satir));	
+		
+		if(l[1]<l[3])
+		{
+			ustKoseL=l[0];	
+			altKoseL=l[2];
+		}
+		else{
+			ustKoseL=l[2];	
+			altKoseL=l[0];
+
+		}
+		
+		if(t[1]<t[3])
+		{
+			ustKoseT=t[0];	
+			altKoseT=t[2];	
+		}
+		else{
+			ustKoseT=t[2];	
+			altKoseT=t[0];	
+		}
+		
+		int ustFark=abs(ustKoseL-ustKoseT);	
+		int altFark=abs(altKoseL-altKoseT);	
+		
+		double egim=abs(l[1]-l[3]);
+		
+		double eg2=double(l[0]-l[2])/double(l[1]-l[3]);
+//		cout<<"sorun yok 2"<<endl;
+
+		if(sonuc1<maxV && egim>10 && sira1!=i && ustFark+25<altFark && ustFark>10 && altFark>20){
+			if((eg1 > 0 && eg2<0)||(eg1 < 0 && eg2>0)){
+			maxV=sonuc1;
+			sira2=i;
+//			cout<<"sorun yok 3"<<endl;
+			}
+			else{
+			continue;
+//		    cout<<"sorun yok 2"<<endl;
+			}
+		}
+		else if(sonuc2 < maxV && egim>10 && sira1!=i && ustFark+25<altFark && ustFark>10 && altFark>20)
+		{//	cout<<"sorun yok 21"<<endl;
+
+			if((eg1>0 && eg2<0)||(eg1<0 && eg2>0)){
+			maxV=sonuc2;
+			sira2=i;
+//			cout<<"sorun yok 4"<<endl;
+			}
+			else{
+			continue;
+//			cout<<"sorun yok else"<<endl;
+			}
+		}
+
+	}
+	
+	
+	Vec4i p= lines[sira1];
+	Vec4i k= lines[sira2];
+
+
+		
+		 int res1=abs(p[0]-ortaNokta);	
+		 int res2=abs(p[2]-ortaNokta);	
+
+		Vec4i p2;
+		p2[0]=ortaNokta+res1;
+		p2[1]=p[1];
+		
+		p2[2]=ortaNokta+res2;
+		p2[3]=p[3];
+		
+		
+		
+	//cout<<"p[0]: "<<p[0]<<endl;
+//	//cout<<"p[1]: "<<p[1]<<endl;
+//	cout<<"p[2]: "<<p[2]<<endl;
+//	cout<<"p[3]: "<<p[3]<<endl;
+
+//	cout<<"k[0]: "<<k[0]<<endl;
+//	cout<<"k[1]: "<<k[1]<<endl;
+//	cout<<"k[2]: "<<k[2]<<endl;
+//  cout<<"k[3]: "<<k[3]<<endl;
+			
+		
+		
+		if(p[0]<k[0] || p[2]<k[2]){
+			if(p[0]>p[2] || p[1]<p[3]) {
+				
+				xl1=(int)p[0];
+				yl1=(int)p[1];
+				xl2=(int)p[2];
+				yl2=(int)p[3];		
+			}
+			else
+			{
+				
+				xl1=(int)p[2];
+				yl1=(int)p[3];
+				xl2=(int)p[0];
+				yl2=(int)p[1];				
+			}
+			
+			if(k[0]<k[2] || k[1]<k[3]) {
+				
+				xr1=(int)k[0];
+				yr1=(int)k[1];
+				xr2=(int)k[2];
+				yr2=(int)k[3];
+			}
+			else
+			{
+				xr2=(int)k[0];
+				yr2=(int)k[1];
+				xr1=(int)k[2];
+				yr1=(int)k[3];			
+				
+			}
+			
+		}
+		else{
+			
+			if(p[0]>p[2] || p[1]<p[3]) {
+				
+				xr1=(int)p[0];
+				yr1=(int)p[1];
+				xr2=(int)p[2];
+				yr2=(int)p[3];
+			}
+			else
+			{
+				xr2=(int)p[0];
+				yr2=(int)p[1];
+				xr1=(int)p[2];
+				yr1=(int)p[3];			
+				
+			}
+			
+			if(k[0]<k[2] || k[1]<k[3]) {
+				
+				xl1=(int)k[0];
+				yl1=(int)k[1];
+				xl2=(int)k[2];
+				yl2=(int)k[3];
+			}
+			else
+			{
+				xl2=(int)k[0];
+				yl2=(int)k[1];
+				xl1=(int)k[2];
+				yl1=(int)k[3];			
+				
+			}
+			
+		
+			
+		}
+		
+		
+
+		
+		//line(cdst, Point(p[0], p[1]), Point(p[2], p[3]), Scalar(0, 0, 255), 3, CV_AA);
+		//line(cdst, Point(k[0], k[1]), Point(k[2], k[3]), Scalar(0, 0, 255), 3, CV_AA);
+	
+	
+	
+	
+	
+	
+	
+
+	
+	namedWindow("source",CV_WINDOW_FREERATIO);
+	namedWindow("detected lines",CV_WINDOW_FREERATIO);
+
+
+	imshow("source", src);
+	imshow("detected lines", cdst);
+//	cout<<"cizgiBul cikis"<<endl;
+
+
+}
+
+void ortaNokta(int xl1, int yl1, int xl2, int yl2, int xr1, int yr1, int xr2, int yr2) {
+//	cout<<"ortaNokta giris"<<endl;
+
+	cout<<"--------------OrtaNokta------------------"<<endl;
+	double ml = double(double(yl2 - yl1) / double(xl2 - xl1));
+
+	double mr = double(double(yr2 - yr1) / double(xr2 - xr1));
+
+	 OrtaNoktaY2 = (-yr2*ml + mr*xr2*ml - ml*mr*xl2 + yl2*mr) / (mr - ml);
+	 OrtaNoktaX2 = (OrtaNoktaY2 - yl2 + ml*xl2) / ml;
+//	orta = [round(x), round(y)];
+	OrtaNoktaX2 = round(OrtaNoktaX2);
+	OrtaNoktaY2 = round(OrtaNoktaY2);
+	OrtaNoktaX = (int)OrtaNoktaX2;
+	OrtaNoktaY = (int)OrtaNoktaY2;
+//	cout<<"ortaNokta cikis"<<endl;
+
+}
+
+void histBul(Mat res,int sira) {
+//		cout<<"histBul giris"<<endl;
+
+	cout << "------------HISTBUL---------------" << endl;
+//	cout << "hist: " <<sira<< "  basladi... "<<endl ;
+
+	for (int i = 0; i < res.rows; i++)
+	{
+		for (int j = 0; j < res.cols; j++)
+		{
+			int intensity = (int)res.at<uchar>(i, j);
+			histler[sira][1][intensity]= histler[1][1][intensity] + 1;
+		}
+	}
+//	cout << "hist: " << sira << "  bitti... " << endl;
+//		cout<<"histBul cikis"<<endl;
+
+}
+
+int windowEdge(Mat Buyukimge, int OrtaNoktaX, int merkezY, int ofset) {
+	//	cout<<"windowEdge giris"<<endl;
+
+	int merkez[3] = {0,OrtaNoktaX,merkezY};
+	cout << "-------------------EDGE-----------------" << endl;
+	
+	//cout << "merkezY: " << merkezY << endl;
+	//cout << "ofset: " << ofset << endl;
+	//cout << "OrtaNoktaX: " << OrtaNoktaX << endl;
+	//cout << "merkez[1]: " << merkez[1] << endl;
+	//cout << "merkez[2]: " << merkez[2] << endl;
+
+
+	//Mat partNew = Buyukimge.clone();
+
+
+	if ((merkez[1] + 2 * ofset) > Buyukimge.cols)
+	{
+		if ((merkez[2]-ofset)<0)
+		{
+			if ((merkez[2]+2*ofset)>Buyukimge.rows)
+			{
+		//		cout << "if 1" << endl;
+				int kosex = merkez[1] - ofset;
+				int kosey = 1;
+				int kosex2 = Buyukimge.cols;
+				int kosey2 = Buyukimge.rows;
+				Rect myRoiNew(kosex, kosey,kosex2 , kosey2);
+
+				Mat partNew = Buyukimge(myRoiNew);
+
+				namedWindow("EDGE PARCASI", CV_WINDOW_AUTOSIZE);
+				imshow("EDGE PARCASI", partNew);
+				int sonuc = edgeBul(partNew);
+				return sonuc;
+			}
+			else if ((merkez[2]+2*ofset)<Buyukimge.rows)
+			{
+		//		cout << "if 2" << endl;
+				int kosex = merkez[1] - ofset;
+				int kosey = 1;
+				int kosex2 = Buyukimge.cols;
+				int kosey2 = merkez[2]+2*ofset;
+				Rect myRoiNew(kosex, kosey, kosex2, kosey2);
+
+				Mat partNew = Buyukimge(myRoiNew);
+
+				namedWindow("EDGE PARCASI", CV_WINDOW_AUTOSIZE);
+				imshow("EDGE PARCASI", partNew);
+				int sonuc = edgeBul(partNew);
+				return sonuc;
+			}
+		}
+		else if ((merkez[2]-ofset)>0)
+		{
+			if ((merkez[2] + 2 * ofset)>Buyukimge.rows)
+			{
+		//		cout << "if 3" << endl;
+				int kosex = merkez[1] - ofset;
+				int kosey = merkez[2]-ofset;
+				int kosex2 = Buyukimge.cols;
+				int kosey2 = Buyukimge.rows;
+				Rect myRoiNew(kosex, kosey, kosex2, kosey2);
+
+				Mat partNew = Buyukimge(myRoiNew);
+
+				namedWindow("EDGE PARCASI", CV_WINDOW_AUTOSIZE);
+				imshow("EDGE PARCASI", partNew);
+				int sonuc = edgeBul(partNew);
+				return sonuc;
+			}
+			else if ((merkez[2] + 2 * ofset)<Buyukimge.rows)
+			{
+	//			cout << "if 4" << endl;
+				int kosex = merkez[1] - ofset;
+				int kosey = merkez[2] - ofset;
+				int kosex2 = Buyukimge.cols;
+				int kosey2 = merkez[2] + 2 * ofset;
+				Rect myRoiNew(kosex, kosey, kosex2, kosey2);
+
+				Mat partNew = Buyukimge(myRoiNew);
+
+				namedWindow("EDGE PARCASI", CV_WINDOW_AUTOSIZE);
+				imshow("EDGE PARCASI", partNew);
+				int sonuc = edgeBul(partNew);
+				return sonuc;
+			}
+		}
+
+	}
+	else if ((merkez[1] + 2 * ofset) < Buyukimge.cols)
+	{
+		if ((merkez[2] - ofset)<0)
+		{
+			if ((merkez[2] + 2 * ofset)>Buyukimge.rows)
+			{
+	//			cout << "if 5" << endl;
+				int kosex = merkez[1] - ofset;
+				int kosey = 1;
+				int kosex2 = merkez[1] + 2 * ofset;
+				int kosey2 = Buyukimge.rows;
+				Rect myRoiNew(kosex, kosey, kosex2, kosey2);
+
+				Mat partNew = Buyukimge(myRoiNew);
+
+				namedWindow("EDGE PARCASI", CV_WINDOW_AUTOSIZE);
+				imshow("EDGE PARCASI", partNew);
+				int sonuc = edgeBul(partNew);
+				return sonuc;
+			}
+			else if ((merkez[2] + 2 * ofset)<Buyukimge.rows)
+			{
+	//			cout << "if 6" << endl;
+				int kosex = merkez[1] - ofset;
+				int kosey = 1;
+				int kosex2 = merkez[1] + 2 * ofset;
+				int kosey2 = merkez[2] + 2 * ofset;
+				Rect myRoiNew(Point(kosex, kosey), Point(kosex2, kosey2));
+
+				Mat partNew = Buyukimge(myRoiNew);
+
+				namedWindow("EDGE PARCASI", CV_WINDOW_AUTOSIZE);
+				imshow("EDGE PARCASI", partNew);
+				int sonuc = edgeBul(partNew);
+				return sonuc;
+			}
+		}
+		else if ((merkez[2] - ofset)>0)
+		{
+			if ((merkez[2] + 2 * ofset)>Buyukimge.rows)
+			{
+	//			cout << "if 7" << endl;
+				int kosex = merkez[1] - ofset;
+				int kosey = merkez[2] - ofset;
+				int kosex2 = merkez[1] + 2 * ofset;
+				int kosey2 = Buyukimge.rows;
+	//			cout << "kosex: " << kosex << endl;
+	//			cout << "kosex2: " << kosex2 << endl;
+	//			cout << "kosey: " << kosey << endl;
+	//			cout << "kosey2: " << kosey2 << endl;
+
+
+				//rectangle(Buyukimge, Point(kosex, kosey), Point(kosex2, kosey2), Scalar(255, 255, 255), 1, 8, 0);
+
+				namedWindow("EDGE PARCASI", CV_WINDOW_AUTOSIZE);
+				imshow("EDGE PARCASI", Buyukimge);
+
+				Rect myRoiNew(Point(kosex, kosey), Point(kosex2, kosey2));
+
+				Mat partNew = Buyukimge(myRoiNew);
+
+				namedWindow("EDGE PARCASI2", CV_WINDOW_AUTOSIZE);
+				imshow("EDGE PARCASI2", partNew);
+				flagNew = 0;
+				int sonuc = edgeBul(partNew);
+				return sonuc;
+			}
+			else if ((merkez[2] + 2 * ofset)<Buyukimge.rows)
+			{
+	//			cout << "if 8" << endl;
+				int kosex = merkez[1] - ofset;
+				int kosey = merkez[2] - ofset;
+				int kosex2 = merkez[1] + 2 * ofset;
+				int kosey2 = merkez[2] + 2 * ofset;
+
+			//	cout << "kosex: " << kosex << endl;
+		//		cout << "kosex2: " << kosex2 << endl;
+			//	cout << "kosey: " << kosey << endl;
+		//		cout << "kosey2: " << kosey2 << endl;
+
+				//rectangle(Buyukimge, Point(kosex, kosey), Point(kosex2, kosey2), Scalar(0, 0, 0), 1.2, 8, 0);
+
+				Rect myRoiNew(Point(kosex, kosey), Point(kosex2, kosey2));
+
+				Mat partNew = Buyukimge(myRoiNew);
+
+				namedWindow("EDGE PARCASI", CV_WINDOW_AUTOSIZE);
+				imshow("EDGE PARCASI", partNew);
+				int sonuc = edgeBul(partNew);
+				return sonuc;
+			}
+		}
+
+	}
+
+
+
+
+
+
+
+	//	cout<<"windowEdge cikis"<<endl;
+
+
+
+}
+
+int edgeSum(Mat edges) {
+	//	cout<<"edgeSum giris"<<endl;
+
+	int toplam=0;
+	cout << "-----------------EDDGESUM-----------------" << endl;
+
+	for (int  i = 0; i < edges.rows; i++)
+	{
+		for (int j = 0; j < edges.cols; j++) {
+
+			int pikselnew = (int)edges.at<uchar>(i, j);
+
+			if (pikselnew==1 || pikselnew==255)
+			{
+				toplam = toplam + 1;
+			}
+		}
+	}
+	//	cout<<"edgeSum cikis"<<endl;
+
+	//cout << "edgeSum 1" << endl;
+	return toplam;
+
+}
+
+
+int edgeBul(Mat resimge ) {
+		//cout<<"edgeBul giris"<<endl;
+
+	//blur(resimge,resimge, Size(3, 3));
+	cout << "-----------------EDDGEBUL-----------------" << endl;
+
+	if (method==1) /* canny*/
+	{
+		Canny(resimge, resimge, lowThreshold, lowThreshold*ratio, kernel_size);
+		namedWindow("edgeli",CV_WINDOW_FREERATIO);
+		imshow("edgeli",resimge);
+	}
+	else if (method==2) /*Sobel*/
+	{
+		Sobel(resimge, resimge, ddepth, 1, 0, 3, scale, delta, BORDER_DEFAULT);
+
+	}
+
+	int edgeToplam=edgeSum(resimge);
+	//	cout<<"edgeBul cikis"<<endl;
+
+	//cout << "edgeBul 1" << endl;
+	return edgeToplam;
+}
+
+
+
+void picDrawLine(Mat resim, double carpan) {
+//		cout<<"picDrawLine giris"<<endl;
+
+	int flag = 789;
+	int sayac = 2;
+	//int histValue[3][255];
+
+	GaussianBlur(resim, resim, Size(5,5), 0, 0);
+	cvtColor(resim,resim,COLOR_BGR2GRAY);
+	int satir = resim.rows;
+	int sutun = resim.cols;
+	int piksel = round(satir / parca_sayisi);
+	/**/
+
+
+	 int korX1 = OrtaNoktaX - round(piksel / 2)+1;
+	 int korX2 = satir - piksel + 1;
+
+
+
+	Rect myRoi( Point(korX1,korX2), Point(piksel-1, piksel-1));
+	Mat temp = resim(myRoi);
+	/**/
+
+	int tresHoldNew=edgeBul(temp);
+
+	/*ilk referans parcasi*/
+	//line(resimis,Point(OrtaNoktaX,OrtaNoktaY),Point(OrtaNoktaX,resim.cols),Scalar(255,0,0),1.3,8,0);
+	//rectangle(resimis, Point(korX1, korX2), Point(korX1 + piksel - 1, korX2 + piksel - 1), Scalar(0, 255, 0), 1, 8, 0);
+	/**/
+	
+	double edgeNumTemp=windowEdge(resim,  OrtaNoktaX, korX2+round(piksel/2), piksel);
+	double treshold=carpan*edgeNumTemp;
+
+	cout << "NUMUNE:" << endl;
+	cout << "----------------------------" << endl;
+	cout << "Edge Sayisi: " << edgeNumTemp << endl ;
+	cout << "Treshold: " << treshold << endl ;
+	cout << "------------------------" << endl;
+	//namedWindow("res", CV_WINDOW_AUTOSIZE);
+	//imshow("res", resim);
+
+	//namedWindow("referans parcasi", CV_WINDOW_FREERATIO);
+	//imshow("referans parcasi", temp);
+
+	histBul(temp, 1);
+	histler[1][2][1]= satir - piksel / 2;
+	histler[1][3][1] = 0;
+
+
+	int vektor2[255] = { 0 };
+
+	for (int i = 0; i < 255; i++)
+	{
+		vektor2[i] = histler[1][1][i];
+	}
+	//cout<<"----------------------------------------"<<endl;
+	//cout << "Ornek Hist vektor atamasi yapildi..." << endl;
+	//cout << "----------------------------------------" << endl;
+	//int dee = satir - 2 * piksel;
+	//int fee = dee - piksel;
+
+	//cout << "i: " << dee << endl;
+	//cout << "son deger: " << OrtaNoktaX << endl;
+	//cout << "Artim: " << fee << endl;
+	for (int i = (satir - 2*piksel); i > OrtaNoktaY; i=i-piksel)
+	{
+		//cout << "for basladi " <<  endl;
+	//	cout << "++++++++++++++++++++++++++++++++++" << endl;
+	//	cout <<"for i degeri: " << i << endl;
+	//	cout << "++++++++++++++++++++++++++++++++++" << endl;
+		
+		if(i<0)
+			break;
+
+		int korX1New = OrtaNoktaX - round(piksel / 2)+1;
+		Rect myRoi2(korX1New, i+1, piksel, piksel);
+		cout << " " << endl;
+		cout << "___________________________________" << endl;
+	//	cout << "Karsilastirilacak Parca Bilgileri" << endl;
+		cout << "Kacinci Parca: " << sayac - 1 << endl;
+	//	cout << "Kose x: " << korX1New << endl;
+	//	cout << "Kose y: " << i + 1 << endl;
+	//	cout << "Kose x2: " << korX1New+piksel << endl;
+	//	cout << "Kose y2: " << i +piksel+1 << endl;
+
+		Mat part = resim(myRoi2);
+
+		//rectangle(resim, Point(korX1New, i  + 1), Point(korX1New + round(piksel), i +piksel+ 1 ), Scalar(255, 255, 255), 1, 8, 0);
+		
+		//namedWindow("res", CV_WINDOW_FREERATIO);
+		//imshow("res", resim);
+
+		
+		histBul(part,sayac);
+		histler[sayac][2][1] = i+1; /*merkez noktasi x icin*/
+		//cout << "for histbul cikisi 1" << endl;
+
+		//cout << "**********************" << endl;
+	//	cout << "Merkez: " << histler[sayac][2][1] << endl;
+		
+		//Rect myRoiNew1(korX1New-piksel, i + 1-piksel, 3*piksel, 3*piksel);
+		
+		//Mat parcais = resim(myRoiNew1);
+
+		int numpixel = windowEdge(resim,  korX1New, i+1, piksel);
+		cout << "Icerdigi Edge Sayisi: " << numpixel << endl;
+
+		if (flagNew==1)
+		{
+			break;
+		}
+
+		int farkPiksel=numpixel-treshold;
+		if (numpixel >treshold) {
+			histler[sayac][4][1] = farkPiksel;
+			cout << "Tresholddan Buyuk" << endl;
+
+		}
+		else
+		{
+			histler[sayac][4][1] = 0;
+			cout << "Tresholddan Kucuk" << endl;
+
+		}
+
+
+		int vektor1[255] = { 0 };
+
+
+		for (int  i = 0; i < 255; i++)
+		{
+			vektor1[i]=histler[sayac][1][i];
+			//cout << " vektor2 for 1" << endl;
+
+		}
+
+		double error=0.0;
+
+		for (int i = 0; i < 255; i++)
+		{
+			//cout << "ERROR" << endl;
+
+			error = sqrt(abs(vektor1[i] - vektor2[i])) + error;
+		}
+
+		histler[sayac][3][1] = error;
+		error = 0.0;
+
+		sayac = sayac + 1;
+	}
+
+	int minV = 100000;
+	int maxV = 0;
+	int merkezCoord = 0;
+	int maxV2=0;
+	
+	for (int i = 2; i < sayac-1; i++)
+	{
+		if (histler[i][4][1] > maxV2) {
+			//if (histler[i][3][1]>maxV)
+			//{
+				//if (histler[i][2][1]<minV)
+				//{	
+					penSay=i;
+					cout << "Ilgili Pencere Bulundu" << endl;
+					cout << "Pencere sayisi: " << penSay << endl;
+					maxV = histler[i][3][1];
+					merkezCoord = histler[i][2][1];
+					minV = histler[i][2][1];
+					maxV2=histler[i][4][1];
+				//}
+				
+
+			 //}
+
+		  }
+
+	  }
+
+	minV = 100000;
+	maxV = 0;
+
+	namedWindow("pen1", CV_WINDOW_FREERATIO);
+	rectangle(resimis, Point(OrtaNoktaX-2*(piksel/2)+1, merkezCoord-piksel/2), Point(OrtaNoktaX+2*(piksel/2)+1, merkezCoord+2*(piksel)+1), Scalar(0, 255, 0),2,8,0);
+	imshow("pen1", resimis);
+
+//	cout << "x1: " << merkezCoord << endl;
+//	cout << "x2: " << OrtaNoktaX + (piksel / 2) + 1 << endl;
+//	cout << "y1: " << merkezCoord - (piksel / 2) + 1<< endl;
+//	cout << "y2: " << merkezCoord + (piksel / 2) + 1<< endl;
+
+	//	cout<<"picDrawLine cikis"<<endl;
+
+
+}
+
+
+
+int main()
+{
+
+	double edgeTresh;
+//	cout << "Please enter an integer value: ";
+//	cin >> edgeTresh;
+	edgeTresh=10;
+	
+    wiringPiSetup () ;
+	pinMode (0, OUTPUT) ;
+	
+	VideoCapture vid(0);
+	if (!vid.isOpened())
+	{
+		cout << "video acilamadi" << endl;
+		system("Pause");
+		return -1;
+	}
+
+  
+	Mat frame;
+
+  
+//	resimis= imread("/home/pi/Downloads/resimTestEdge.png");
+//	src=imread("/home/pi/Downloads/resimTestEdge.png");
+	//	int flagCik=1;
+	while(1){
+	
+	bool kontrol2 = vid.read(resimis);
+		if (!kontrol2)
+		{
+			cout << "Frame yuklenemedi" << endl;
+			system("Pause");
+		}
+	
+	//namedWindow("kamera",CV_WINDOW_FREERATIO);
+	imshow("kamera",resimis);
+	
+	
+	if(waitKey(30)==27){
+	destroyWindow("kamera"); 
+	break;
+	}
+	
+	}
+		
+
+	
+		bool kontrol2 = vid.read(resimis);
+		if (!kontrol2)
+		{
+			cout << "Frame yuklenemedi" << endl;
+			system("Pause");
+		}
+  
+
+
+	cizgiBul(resimis);
+	//	cout<<"cizgiBul bitti main"<<endl;
+
+
+	//Mat resimis = imread("C:/Users/Muhammet/Documents/MATLAB/Lane Detection/Literature/deneme_sil_enson/a1.png");
+	//Mat resimis = imread("C:/Users/Muhammet/Documents/MATLAB/Lane Detection/Literature/deneme_sil_enson/a4.png");
+	//Mat resimis = imread("C:/Users/Muhammet/Documents/MATLAB/Lane Detection/Literature/deneme_sil_enson/a7.png");
+	//Mat resimis = imread("C:/Users/Muhammet/Documents/MATLAB/Lane Detection/Literature/deneme_sil_enson/a6.png");
+	//Mat resimis = imread("C:/Users/Muhammet/Documents/MATLAB/Lane Detection/Literature/deneme_sil_enson/a2.png");
+
+	//ortaNokta(168, 245, 227, 117, 292, 117, 416, 262);//a2 350 / 330
+	//ortaNokta(243, 104, 159, 262, 285, 106, 395, 255); // a1 400
+	//ortaNokta(120, 180, 31, 281, 316, 173, 353, 279); //a4 400
+	//ortaNokta(425, 229, 352, 430, 462, 223, 469, 467); //a7 750
+	//ortaNokta(1293, 599, 877, 975, 1553, 579, 1911, 899);//a6 2000
+	//ortaNokta(138, 200, 42, 326, 288, 193, 412, 303); //a3 500
+	//ortaNokta(653, 561, 521, 873, 1217, 485, 1493, 833); //a5 1950
+	
+//	cout<<"xl1: "<<xl1<<endl;
+//	cout<<"xl2: "<<xl2<<endl;
+//	cout<<"yl1: "<<yl1<<endl;
+//	cout<<"yl2: "<<yl2<<endl;
+	
+//	cout<<"xr1: "<<xr1<<endl;
+//	cout<<"xr2: "<<xr2<<endl;
+//	cout<<"yr1: "<<yr1<<endl;
+//	cout<<"yr2: "<<yr2<<endl;
+	
+	
+	ortaNokta(xl1,yl1,xl2,yl2,xr1,yr1,xr2,yr2); 
+
+//		cout<<"ortaNokta bitti main"<<endl;
+
+	Mat resim2 = resimis.clone();
+
+	cout << "OrtaNokta-> X: " << OrtaNoktaX << " OrtaNokta-> Y: " << OrtaNoktaY << endl;
+	cout << "--------------------------------------------------" << endl;
+		  picDrawLine(resim2, edgeTresh);
+//	cout<<"picDrawLine bitti main"<<endl;
+
+	
+	if (penSay>stopParam){
+		stopCar();
+	}
+	else{
+		driveCar();
+	}
+	
+	cout<<"Pensay: "<<penSay<<endl;
+	cout<<"stopParam: "<<stopParam<<endl;
+	
+
+	while(waitKey(30)!=27);
+
+
+
+
+    return 0;
+}
+
+
+
+
+
+
